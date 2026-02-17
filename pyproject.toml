@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toolsbench"
+version = "0.1.0"
+description = "Agentic Tooling Benchmark"
+readme = "README.md"
+requires-python = ">=3.14"
+license = { file = "LICENSE" }
+authors = [{ name = "toolsbench contributors" }]
+dependencies = [
+  "click>=8.1.7",
+  "python-dotenv>=1.0.1"
+]
+
+[project.scripts]
+toolsbench = "toolsbench.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
