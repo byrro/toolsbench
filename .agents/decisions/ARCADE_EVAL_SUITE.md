@@ -44,6 +44,10 @@ The subclass approach is preferred for most extensions -- override run/request m
 - **Pricing snapshots** stored in-repo for cost reproducibility.
 - **Static HTML generation** from results JSON and templates for publishing via GitHub Pages or S3 + CloudFront.
 
+## Risks and Mitigations
+
+- **Reproducibility gap from dependency drift.** If `arcade-evals` scoring logic or matching behavior changes between versions, results from different runs are not comparable. Mitigation: pin the exact `arcade-mcp` version (or commit hash) in `pyproject.toml`, and record the pinned version in every run's metadata. Since `external/arcade-mcp` is vendored in the repo, pinning to a specific commit is straightforward.
+
 ## Key Library Details
 
 - **Location in repo:** `external/arcade-mcp/libs/arcade-evals/`
