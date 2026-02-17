@@ -1,3 +1,3 @@
-# toolsbench.com
+# Tools Bench
 
-toolsbench.com - Agentic Tooling Benchmark
+Agentic Tooling Benchmark
