@@ -1,0 +1,3 @@
+[submodule "external/composio"]
+	path = external/composio
+	url = https://github.com/ComposioHQ/composio.git
