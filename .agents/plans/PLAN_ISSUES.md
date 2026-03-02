@@ -207,19 +207,35 @@ How we retrieve, store, and adapt tool definitions from tool providers.
 
 **Status: DECIDED**
 
-**Decision:** A CLI command (e.g., `toolsbench fetch-tools`) programmatically retrieves tool definitions from providers, stores the raw definitions and metadata (version, source URL, download datetime), and writes adapted schemas for model APIs when needed. Both original and adapted versions are stored on disk.
+**Decision:** A CLI command (e.g., `toolsbench fetch-tools`) programmatically retrieves tool definitions from providers and stores the raw MCP definitions along with metadata (version, source URL, download datetime). Only raw definitions are committed to the repo; adaptation to model-specific formats (Anthropic tool use, OpenAI function calling) happens at eval runtime (see 8.2).
 
 For v1 we target only tools served through the MCP protocol. This means we implement a single tool definition retrieval mechanism (MCP `tools/list`) that applies uniformly to any MCP-compatible server (Arcade, Composio, or others). Provider-specific fetching logic is not needed.
 
 ### 8.2 Storage layout and schema adaptation
 
-**Status: OPEN**
+**Status: DECIDED**
 
-Need to decide:
-- File layout for raw definitions vs adapted schemas (e.g., `tools/<provider>/raw/` and `tools/<provider>/adapted/<model-api>/`?)
-- Naming conventions and directory structure
-- How adaptation from MCP tool format to model-specific formats (Anthropic tool use vs OpenAI function calling) works -- automatic conversion, per-model-API adapters, or both
-- Whether the adaptation is done at fetch time or at eval runtime
+**Decision:** Only raw MCP definitions are stored in the repo. Adaptation to model-specific formats happens at eval runtime via a lightweight adapter registry.
+
+**Storage layout:** One JSON file per tool, grouped by provider and toolkit:
+
+```
+tools/
+  <provider>/
+    _meta.json                          # provider-level metadata (source URL, fetch datetime)
+    <toolkit>/
+      _meta.json                        # toolkit-level metadata (tool count, version)
+      <ToolName>.json                   # raw MCP tool definition
+      ...
+```
+
+File names match the tool's canonical name as returned by the MCP server.
+
+**Adaptation mechanism:** Delegated to the Arcade evals SDK. The SDK's `EvalSuiteToolRegistry` stores tools in MCP format and converts them on demand via `list_tools_for_model(tool_format=...)`, dispatching to built-in converters for OpenAI (strict mode, `additionalProperties: false`, optional params unioned with `null`) and Anthropic (`inputSchema` → `input_schema`, standard JSON Schema preserved). It also handles tool name normalization (dots vs underscores) and other edge cases. No custom adapter code is needed in ToolsBench.
+
+**When adaptation happens:** At eval runtime. The eval runner loads raw MCP definitions for the relevant toolkit from disk, feeds them into the SDK's tool registry, and lets the registry handle conversion when making LLM API calls. The adapted definitions are stored in the eval results JSON for provenance (per decision 13.3).
+
+**Rationale:** Storing adapted schemas on disk would create a sync problem (raw definitions change but adapted versions don't get regenerated) for minimal benefit. The Arcade evals SDK already implements correct, tested converters for each supported model API, so there is no reason to duplicate that logic.
 
 ### 8.3 Refresh policy
 
