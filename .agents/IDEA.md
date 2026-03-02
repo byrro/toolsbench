@@ -1,6 +1,8 @@
 # Tools Benchmark
 
-An open source service that benchmarks agentic tools by evaluating how well LLMs perform at both picking the right tool and calling it correctly. The benchmark results are fully transparent, verifiable, and reproducible. We compare tool vendors in the most neutral and fair way, on equal footing. Anyone can re-run the evals (using their own `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) and confirm that published results are truthful.
+An open source service that benchmarks agentic tools by evaluating how well LLMs perform at both picking the right tool and calling it correctly. Built primarily for **AI agent developers**, the benchmark results are fully transparent, verifiable, and reproducible. We compare tool vendors in the most neutral and fair way, on equal footing. Anyone can re-run the evals (using their own `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) and confirm that published results are truthful.
+
+Eval tasks are identical regardless of tool supplier — benchmarks must be 100% fair across providers and not benefit any vendor in any way. v1 focuses on single tool call evaluation; multi-step workflows are planned for v2.
 
 Our benchmarks evaluate tools in three dimensions:
 
@@ -15,6 +17,8 @@ Our benchmarks evaluate tools in three dimensions:
 **Tool providers:** Arcade.dev and Composio.dev for v1. Public MCP servers in v2.
 
 **Tool definitions** are fetched from each provider and committed to the repo along with metadata (version, source URL, download datetime).
+
+**Language:** Python 3.13. CLI built with Click.
 
 ## Deliverables
 

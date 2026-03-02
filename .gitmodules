@@ -1,3 +1,6 @@
 [submodule "external/composio"]
 	path = external/composio
 	url = https://github.com/ComposioHQ/composio.git
+[submodule "external/monorepo"]
+	path = external/monorepo
+	url = https://github.com/ArcadeAI/monorepo.git

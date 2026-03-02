@@ -146,3 +146,216 @@ Candidate fields to capture per integration:
 - Any provider-specific gotchas or limitations
 
 Need to decide: where this lives in the repo (alongside tool definitions? separate `integrations/` directory?), and the exact schema.
+
+---
+
+## 5. Tool Set Size per Task
+
+How we select and record which tools are provided to the model for each eval case.
+
+### 5.1 Tool selection policy
+
+**Status: DECIDED**
+
+**Decision:** By default, we provide the entire toolkit relevant to the prompt (e.g., the provider's full Slack toolkit for a Slack-related prompt). If the toolkit exceeds the LLM API's max tool count, we randomize a subset while ensuring the expected tool is always included. Tool definitions live in a central location; eval cases reference the tools provided by name and/or hash, and we store the final list actually sent to the model.
+
+Open detail:
+- The randomization of subsets should use a seeded RNG for reproducibility. Need to decide whether the seed is per-run, per-task, or configurable.
+
+---
+
+## 6. Rate Limiting
+
+How we throttle requests to LLM providers to stay within API limits without affecting eval results.
+
+### 6.1 Rate limiting strategy
+
+**Status: DECIDED**
+
+**Decision:** Per-provider token-bucket rate limiting, configured via `.env` variables. Each provider defines `RATE_LIMIT_RPS` (requests per second) and `RATE_LIMIT_BURST` (max immediate burst). This throttles how fast requests are started, even when concurrency is higher. On 429 or rate-limit errors, we pause the provider queue for `Retry-After` (if present) or a default backoff with jitter, then resume. Rate limiting is purely operational and does not affect evaluation scoring or results beyond pacing.
+
+---
+
+## 7. Run Identification
+
+How we identify, link, and trace eval runs for reproducibility and comparison.
+
+### 7.1 Run identification scheme
+
+**Status: DECIDED**
+
+**Decision:** Each eval run has a unique `run_id` (UUID) plus a `started_at` timestamp for ordering. Re-runs create a new `run_id` and store `rerun_of` pointing to the original run. We also store a `config_hash` for parity checks and allow an optional `run_label` for convenience.
+
+Open details:
+- **`config_hash` composition:** need to define what inputs feed into the hash (model params, prompt version, tool definition versions, seed policy, eval task set).
+- **Seed tracking:** the Arcade eval SDK (`arcade-evals`) already implements seed management with a `seed_policy` (constant, random, or custom integer) and per-run `run_seeds` list, plus multi-run statistics (mean score, std deviation, pass rules). Our run metadata should capture seed info as well for reproducibility. Worth evaluating whether we build on top of Arcade's eval SDK (wrapping its results with our persistence layer) or build our own -- in either case, seed tracking should be part of run identification.
+- **API request IDs:** each eval call should capture the provider-specific response/request ID (e.g., OpenAI `response.id`, Anthropic `message.id`) and the timestamp when the request was sent. Exact fields to capture can be determined per provider during implementation.
+
+### 7.2 Model parameters and determinism
+
+**Status: DECIDED**
+
+**Decision:** Deterministic defaults for reproducibility, user-overridable via `.env`. Configurable parameters: `temperature`, `top_p`, `max_tokens`, `tool_choice`, `concurrency`, and `reasoning_effort` (for thinking models). No per-model overrides. Whatever values are used for a run get stored in the run metadata and feed into the `config_hash`.
+
+---
+
+## 8. Tool Definition Fetching
+
+How we retrieve, store, and adapt tool definitions from tool providers.
+
+### 8.1 Fetching strategy
+
+**Status: DECIDED**
+
+**Decision:** A CLI command (e.g., `toolsbench fetch-tools`) programmatically retrieves tool definitions from providers, stores the raw definitions and metadata (version, source URL, download datetime), and writes adapted schemas for model APIs when needed. Both original and adapted versions are stored on disk.
+
+For v1 we target only tools served through the MCP protocol. This means we implement a single tool definition retrieval mechanism (MCP `tools/list`) that applies uniformly to any MCP-compatible server (Arcade, Composio, or others). Provider-specific fetching logic is not needed.
+
+### 8.2 Storage layout and schema adaptation
+
+**Status: OPEN**
+
+Need to decide:
+- File layout for raw definitions vs adapted schemas (e.g., `tools/<provider>/raw/` and `tools/<provider>/adapted/<model-api>/`?)
+- Naming conventions and directory structure
+- How adaptation from MCP tool format to model-specific formats (Anthropic tool use vs OpenAI function calling) works -- automatic conversion, per-model-API adapters, or both
+- Whether the adaptation is done at fetch time or at eval runtime
+
+### 8.3 Refresh policy
+
+**Status: DECIDED**
+
+**Decision:** Tool definitions are refreshed manually, only when a provider updates its tools. No automated or scheduled refresh.
+
+### 8.4 Redistribution policy
+
+**Status: DECIDED**
+
+**Decision:** We only publish tool definitions that are already publicly advertised by the providers (e.g., on their public documentation pages). If a provider publicly documents tool interfaces (name, parameters, types), redistributing them falls under fair use. If a tool definition is not publicly advertised, we do not include it.
+
+---
+
+## 9. System Prompt Management
+
+How we maintain, version, and trace system prompts used in evaluations.
+
+### 9.1 Prompt registry and versioning
+
+**Status: DECIDED (direction), OPEN (format)**
+
+**Decision:** A default system prompt lives in a dedicated `prompts/` registry with version metadata. Each eval case can reference a `system_prompt_id` and optionally override it with a task-specific prompt. Results store the exact system prompt text plus a `prompt_hash` for traceability. A single unified system prompt is used across all LLM providers (no provider-specific prompts).
+
+Open details:
+- File format inside `prompts/` (plain text, markdown, structured YAML/JSON with metadata?)
+- Versioning scheme (sequential numbers, semantic versioning, content-based hashes?)
+- How task-specific overrides are defined and stored alongside eval cases
+
+---
+
+## 10. Correctness Matching and Scoring
+
+How we determine whether the model selected the correct tool and provided correct arguments.
+
+### 10.1 Tool choice scoring
+
+**Status: DECIDED**
+
+**Decision:** Tool choice and argument correctness are scored separately. Tool choice is an exact match on the tool name.
+
+Note: the Arcade eval SDK scores both as separate weighted components within a single `EvaluationResult.results` list (`field="tool_selection"` for tool choice, individual `critic_field` entries for each argument). However, it only produces a single combined normalized score. To report two independent top-level scores we need a thin post-processing layer that splits and aggregates those results. Also, `fail_on_tool_selection` (default `True`) must be set to `False` if we want argument scoring to proceed even when tool selection fails -- useful for diagnostics.
+
+### 10.2 Argument matching
+
+**Status: DECIDED**
+
+**Decision:** Exact match for v1. Other matchers (regex, enum membership, numeric tolerance, custom functions) can be added on-demand as the eval catalog grows and we encounter cases that need them.
+
+### 10.3 Missing and extra arguments
+
+**Status: DECIDED**
+
+**Decision:** If an argument is mandatory (no default value) and missing from the model's tool call, it's a failure. If an argument has a default value in the tool interface, omitting it is not a failure — unless the eval case explicitly expects the model to override the default, in which case the expected value must match.
+
+---
+
+## 11. Error Handling and Retries
+
+How we handle API failures during eval runs.
+
+### 11.1 Retry policy
+
+**Status: DECIDED**
+
+**Decision:** On a model API error, wait a few seconds and retry once. If the retry also fails, the eval case fails. No further retries.
+
+### 11.2 Run granularity and isolation
+
+**Status: DECIDED**
+
+**Decision:** Eval runs are scoped per toolkit (e.g., Slack tools, MS Teams tools). A failure in one toolkit does not require re-running previously completed toolkits.
+
+### 11.3 Partial results and continuation
+
+**Status: DEFERRED**
+
+Not needed for v1 given per-toolkit isolation. If a toolkit eval fails, re-run that toolkit only. May revisit if eval suites grow large enough that re-running a single toolkit becomes expensive.
+
+---
+
+## 12. Public Website and Hosting
+
+How we publish benchmark results for public consumption.
+
+**Status: DEFERRED**
+
+The publishing layer (frontend, backend/hosting, UX, templating) is deferred. The priority is the eval machinery: defining evals, running them, and storing results in a structured format that any future frontend/backend can consume. Decisions about static HTML generation, templating engine, hosting (S3 + CloudFront, GitHub Pages, etc.), and UX features (charts, filters, comparisons) will be made later.
+
+---
+
+## 13. Results Storage
+
+How we persist eval results for consumption by future tooling and frontends.
+
+### 13.1 Storage format
+
+**Status: DECIDED**
+
+**Decision:** JSON only, no SQLite or other databases. Results must be structured well enough that any future frontend or analysis tool can consume them directly.
+
+### 13.2 File layout and schema
+
+**Status: OPEN**
+
+Need to decide:
+- File layout: one JSON file per run, per task, per toolkit, or a combination (with an index file?)
+- Minimal JSON schema for runs, tasks, tool calls, and scores
+- How to ensure the schema supports future needs (comparisons across runs, filtering by model/provider/toolkit) without overengineering for v1
+
+### 13.3 Provenance: full prompts and raw outputs
+
+**Status: DECIDED**
+
+**Decision:** Store full prompts and raw model outputs in the results JSON, not just hashes or IDs. This ensures full provenance and allows anyone to inspect exactly what was sent and received without needing to re-run the eval.
+
+---
+
+## 14. Cost and Token Usage Tracking
+
+How we measure and estimate the cost of running evaluations.
+
+### 14.1 Token usage capture
+
+**Status: DECIDED**
+
+**Decision:** Capture token counts (input, output) per eval call from the LLM API response. Store them alongside the eval results.
+
+### 14.2 Pricing table
+
+**Status: DECIDED (direction), OPEN (schema)**
+
+**Decision:** Maintain a versioned JSON file in the repo with per-model prices sourced from the API providers' pricing pages. Each entry includes the datetime when prices were collected. Used to compute cost estimates for eval runs.
+
+Open details:
+- Pricing file schema (per-model input/output token prices, currency, effective date?)
+- Whether we store a single pricing file with historical entries or one file per collection date
+- How cost estimates are presented in the results (per eval case, per toolkit, per run total?)
