@@ -359,3 +359,33 @@ Open details:
 - Pricing file schema (per-model input/output token prices, currency, effective date?)
 - Whether we store a single pricing file with historical entries or one file per collection date
 - How cost estimates are presented in the results (per eval case, per toolkit, per run total?)
+
+---
+
+## 15. Concurrency and Execution Model
+
+How eval cases and suites are executed.
+
+### 15.1 Concurrency strategy
+
+**Status: DECIDED**
+
+**Decision:** Eval runs execute sequentially (one toolkit at a time). Within a run, eval cases and suites are parallelized using the Arcade eval SDK's built-in concurrency control. No custom concurrency infrastructure needed.
+
+---
+
+## 16. Eval Case Authoring
+
+How new eval cases are contributed and organized.
+
+### 16.1 Contribution workflow
+
+**Status: DECIDED**
+
+**Decision:** New eval cases are contributed via pull requests on GitHub. The eval case definition format is dictated by the Arcade eval SDK (`EvalCase`, `ExpectedMCPToolCall`, critics). No custom format needed.
+
+### 16.2 Initial eval catalog scope
+
+**Status: DEFERRED**
+
+Which toolkits and tools to evaluate first, and how many cases per tool, will be defined when ToolsBench is ready to run.
