@@ -4,3 +4,6 @@
 [submodule "external/monorepo"]
 	path = external/monorepo
 	url = https://github.com/ArcadeAI/monorepo.git
+[submodule "external/marketplace"]
+	path = external/marketplace
+	url = https://github.com/ArcadeAI/marketplace
