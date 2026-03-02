@@ -1,4 +1,4 @@
-# Tool Registry Integration
+# Marketplace Integration
 
 ---
 
